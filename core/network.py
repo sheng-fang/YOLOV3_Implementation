@@ -5,6 +5,15 @@ import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, Add, BatchNormalization, UpSampling2D, GlobalAveragePooling2D, Flatten
 from tensorflow.keras.layers import Input, Dense, ZeroPadding2D, LeakyReLU
 from tensorflow.keras.models import Model
+from . import utils
+
+
+ANCHORS = tf.convert_to_tensor([[[10, 13], [16, 30], [33, 23]],
+                                [[30, 61], [62, 45], [59, 119]],
+                                [[116, 90], [156, 198], [373, 326]]],
+                               dtype=tf.int32)
+STRIDES = tf.convert_to_tensor([8, 16, 32],
+                               dtype=tf.int32)
 
 
 def conv_bn_relu(x, filters, kernel_size, strides=1, padding="same", alpha=0.1):
@@ -27,7 +36,7 @@ def conv_bn_relu(x, filters, kernel_size, strides=1, padding="same", alpha=0.1):
     else:
         x = Conv2D(filters, kernel_size, strides=strides, padding=padding)(x)
     x = BatchNormalization()(x)
-    x = tf.keras.activations.relu(x, alpha)
+    x = LeakyReLU(alpha)(x)
 
     return x
 
@@ -79,7 +88,6 @@ def build_darknet53_backbone(input_size):
     Build DarkNet-53 body
     Args:
         input_size:
-        nb_class:
 
     Returns:
 
@@ -96,9 +104,6 @@ def build_darknet53_backbone(input_size):
     stride16 = res_repeat(8, x, filters=512, kernel_size=3, strides=1, padding="same", alpha=0.1)
     x = conv_bn_relu(stride16, filters=1024, kernel_size=3, strides=2, padding="same", alpha=0.1)
     stride32 = res_repeat(4, x, filters=1024, kernel_size=3, strides=1, padding="same", alpha=0.1)
-    # tf.print(stride8.shape)
-    # tf.print(stride16.shape)
-    # tf.print(stride32.shape)
 
     return inputs, stride32, stride16, stride8
 
@@ -116,7 +121,7 @@ def build_darknet53_top(x, nb_class):
     x = GlobalAveragePooling2D()(x)
     x = Flatten()(x)
     x = Dense(units=1000)(x)
-    x = tf.keras.activations.relu(x, alpha=0.1)
+    x = LeakyReLU(alpha=0.1)(x)
     x = Dense(units=nb_class, activation="softmax")(x)
 
     return x
@@ -140,8 +145,8 @@ def build_darknet53(input_size, nb_calss):
     return darknet
 
 
-def build_yolo_network(input_size, nb_class, nb_archor):
-    cell_pred_dim = nb_archor * (5 + nb_class)
+def build_yolo_network(input_size, nb_class, anchor_per_cell):
+    cell_pred_dim = anchor_per_cell * (5 + nb_class)
     inputs, stride32, stride16, stride8 = build_darknet53_backbone(input_size)
 
     x = conv_bn_relu(stride32, 512, kernel_size=1, strides=1, padding="same", alpha=0.1)
@@ -178,6 +183,70 @@ def build_yolo_network(input_size, nb_class, nb_archor):
     x = conv_bn_relu(x, 256, kernel_size=3, strides=1, padding="same", alpha=0.1)
     sobj_pred = Conv2D(filters=cell_pred_dim, kernel_size=1, strides=1, padding="same")(x)
 
+    lobj_pred = yolo_decode(lobj_pred, nb_class, anchor_per_cell)
+    mobj_pred = yolo_decode(lobj_pred, nb_class, anchor_per_cell)
+    sobj_pred = yolo_decode(lobj_pred, nb_class, anchor_per_cell)
+
     yolo = Model(inputs=inputs, outputs=[lobj_pred, mobj_pred, sobj_pred])
 
     return yolo
+
+
+def yolo_decode(conv_output, nb_class, anchor_per_cell):
+    """
+    Decode the convolutional output by adding sigmoid and power activation
+    Args:
+        conv_output:
+        nb_class:
+        anchor_per_cell:
+
+    Returns:
+
+    """
+    batch_size, output_size = tf.shape(conv_output)[0:2]
+
+    curr_output = tf.reshape(conv_output, (batch_size, output_size, output_size, anchor_per_cell, 5 + nb_class))
+
+    dxdy = curr_output[..., 0:2]
+    wh = curr_output[..., 2:4]
+    conf_prob = curr_output[..., 4:]
+
+    dxdy = tf.sigmoid(dxdy)
+    wh = tf.exp(wh)
+    conf_prob = tf.sigmoid(conf_prob)
+
+    return tf.concat([dxdy, wh, conf_prob], axis=-1)
+
+
+def compute_loss(y_true, y_pred):
+    """
+
+    Args:
+        y_true:
+        y_pred:
+
+    Returns:
+
+    """
+    batch_size, output_size = tf.shape(y_pred)[0:2]
+
+    xywh_pred = y_pred[..., 0:4]
+    conf_pred = y_pred[..., 4:5]
+    prob_pred = y_pred[..., 5:]
+
+    xywh_gt = y_true[..., 0:4]
+    response_gt = y_true[..., 4:5]
+    prob_gt = y_true[..., 5:]
+
+    loss_scale = 2.0 - xywh_gt[..., 2:3] * xywh_gt[..., 3:4]
+    # box loss
+    xywh_loss = response_gt * loss_scale * tf.square(xywh_pred - xywh_gt)
+    # objectness loss
+    obj_loss = tf.nn.sigmoid_cross_entropy_with_logits(response_gt, conf_pred)
+    # class loss
+    cls_loss = response_gt * tf.square(prob_gt - prob_pred)
+
+    loss = tf.reduce_sum(xywh_loss) + tf.reduce_sum(obj_loss) + tf.reduce_sum(cls_loss)
+
+    return loss / tf.cast(batch_size, tf.float32)
+
