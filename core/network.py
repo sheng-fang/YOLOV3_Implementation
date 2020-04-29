@@ -1,19 +1,20 @@
 """
 Implementation of Darknet-53 and YOLOV3 network
 """
+import numpy as np
 import tensorflow as tf
 from tensorflow.keras.layers import Conv2D, Add, BatchNormalization, UpSampling2D, GlobalAveragePooling2D, Flatten
 from tensorflow.keras.layers import Input, Dense, ZeroPadding2D, LeakyReLU
 from tensorflow.keras.models import Model
+
 from . import utils
 
+ANCHOR_CFG = "config/anchor_cfg.txt"
+STRIDE_CFG = "config/strides.txt"
 
-ANCHORS = tf.convert_to_tensor([[[10, 13], [16, 30], [33, 23]],
-                                [[30, 61], [62, 45], [59, 119]],
-                                [[116, 90], [156, 198], [373, 326]]],
-                               dtype=tf.int32)
-STRIDES = tf.convert_to_tensor([8, 16, 32],
-                               dtype=tf.int32)
+
+ANCHORS = tf.convert_to_tensor(utils.load_anchors(ANCHOR_CFG), dtype=tf.int32)
+STRIDES = tf.convert_to_tensor(np.loadtxt(STRIDE_CFG, delimiter=","), dtype=tf.int32)
 
 
 def conv_bn_relu(x, filters, kernel_size, strides=1, padding="same", alpha=0.1):
@@ -184,8 +185,8 @@ def build_yolo_network(input_size, nb_class, anchor_per_cell):
     sobj_pred = Conv2D(filters=cell_pred_dim, kernel_size=1, strides=1, padding="same")(x)
 
     lobj_pred = yolo_decode(lobj_pred, nb_class, anchor_per_cell)
-    mobj_pred = yolo_decode(lobj_pred, nb_class, anchor_per_cell)
-    sobj_pred = yolo_decode(lobj_pred, nb_class, anchor_per_cell)
+    mobj_pred = yolo_decode(mobj_pred, nb_class, anchor_per_cell)
+    sobj_pred = yolo_decode(sobj_pred, nb_class, anchor_per_cell)
 
     yolo = Model(inputs=inputs, outputs=[lobj_pred, mobj_pred, sobj_pred])
 

@@ -8,6 +8,7 @@ Sheng FANG
 import cv2
 import numpy as np
 import tensorflow as tf
+import os
 
 
 def bbox_iou_tf(boxes1, boxes2):
@@ -71,6 +72,25 @@ def img_preprocess_fix_ratio(img, target_dim, bbox=None):
         bbox = bbox * scale + np.array([dw, dh, dw, dh]).reshape((1, 4))
 
     return img_resize, bbox
+
+
+def load_anchors(cfg_file):
+    """
+    read anchors in a file. The data is stored in the format:
+    h0, w0, h1, w1, .... ,hn, wn
+    The output is an array with shape of (3, 3, 2), according to YOLO V3 configuration
+    Args:
+        cfg_file:
+
+    Returns:
+
+    """
+    anchors = np.loadtxt(cfg_file, delimiter=",", dtype=int).reshape((3, 3, 2))
+
+    return anchors
+
+
+
 
 
 
