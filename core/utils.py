@@ -8,13 +8,12 @@ Sheng FANG
 import cv2
 import numpy as np
 import tensorflow as tf
-import os
 
 
 def bbox_iou_tf(boxes1, boxes2):
     """
-    Calculate iou of the input boxes1 and boxes2, the boxes is in tensorflow format,
-    x_center, y_center, w, h
+    Calculate iou of the input boxes1 and boxes2, the boxes is in tensorflow
+    format, x_center, y_center, w, h
     Args:
         boxes1:
         boxes2:
@@ -26,10 +25,12 @@ def bbox_iou_tf(boxes1, boxes2):
     boxes2_area = boxes2[..., 2] * boxes2[..., 3]
 
     cornor_boxes1 = tf.concat([boxes1[..., 0: 2] - boxes1[..., 2: 4] * 0.5,
-                               boxes1[..., 0: 2] + boxes1[..., 2: 4] * 0.5], axis=-1)
+                               boxes1[..., 0: 2] + boxes1[..., 2: 4] * 0.5],
+                              axis=-1)
 
     cornor_boxes2 = tf.concat([boxes2[..., 0: 2] - boxes2[..., 2: 4] * 0.5,
-                               boxes2[..., 0: 2] + boxes2[..., 2: 4] * 0.5], axis=-1)
+                               boxes2[..., 0: 2] + boxes2[..., 2: 4] * 0.5],
+                              axis=-1)
 
     inter_pnt_tl = tf.maximum(cornor_boxes1[..., 0:2], cornor_boxes2[..., 0:2])
     inter_pnt_br = tf.minimum(cornor_boxes1[..., 2:4], cornor_boxes2[..., 2:4])
@@ -45,9 +46,10 @@ def img_preprocess_fix_ratio(img, target_dim, bbox=None):
     """
     resize image to target size without changing the content ratio
     Args:
-        image: array
+        img: array
         target_dim: (h, w)
-        bbox: array with shape of (n, 4), coordinates xy of top-left and bottom right
+        bbox: array with shape of (n, 4), coordinates xy of top-left and bottom
+            right
 
     Returns:
 
@@ -78,7 +80,8 @@ def load_anchors(cfg_file):
     """
     read anchors in a file. The data is stored in the format:
     h0, w0, h1, w1, .... ,hn, wn
-    The output is an array with shape of (3, 3, 2), according to YOLO V3 configuration
+    The output is an array with shape of (3, 3, 2), according to YOLO V3
+    configuration
     Args:
         cfg_file:
 
@@ -88,15 +91,3 @@ def load_anchors(cfg_file):
     anchors = np.loadtxt(cfg_file, delimiter=",", dtype=int).reshape((3, 3, 2))
 
     return anchors
-
-
-
-
-
-
-
-
-
-
-
-
